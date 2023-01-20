@@ -30,6 +30,7 @@ We used python 3.10.0.
 
 ```
 python -m venv venv # Python 3.10.0 or later version of that is required.
+source  venv/bin/activate
 pip install -r requirements.txt
 ```
 
