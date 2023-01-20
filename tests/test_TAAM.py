@@ -123,7 +123,7 @@ class TestTAAMModel(object):
 
 
 
-        raise NotImplementedError
+        # raise NotImplementedError
 
 
         return

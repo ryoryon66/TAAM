@@ -402,20 +402,37 @@ class BooleanAlgebra():
             bool: True if included.
         """
 
-        for logic_s in smaller:
+        counter = 0
 
-            included = False
+        def rename_props(logic: Expr,prefix = "private_prop") -> Expr:
+            nonlocal counter
+            
+            inner_symbols = logic.free_symbols
+            rename_mp = dict()
 
-            for logic_b in bigger:
+            for s in inner_symbols:
+                rename_mp[s] = sympy.symbols(f"{prefix}{counter}")
+                counter += 1
+            
+            return logic.subs(rename_mp)
 
-                if BooleanAlgebra.is_equivalent(logic_s, logic_b):
-                    included = True
-                    break
 
-            if not included:
-                return False
+        logic_concatenated = S.true
 
-        return True
+        for logic_x in smaller:
+            logic_inner = S.false
+
+            for logic_y in bigger:
+                
+                equiv = (logic_x >> logic_y) & (logic_y >> logic_x)
+                equiv = rename_props(equiv)
+                logic_inner = logic_inner | equiv
+            
+            logic_concatenated = logic_concatenated & logic_inner
+        
+        included = BooleanAlgebra.is_tautology(logic_concatenated)
+
+        return included
     
 
     @staticmethod
@@ -630,11 +647,12 @@ class BooleanAlgebra():
     
     def in_sub_boolean_algebra(self,expr: Expr, sub_boolean_algebra: list[Prop]) -> bool:
         """
-        check if the given expr is in the given sub_boolean_algebra.
+        check if the given expr is in the given sub_boolean_algebra (bit representation).
 
         Args:
             expr (pyprover.Expr): logical expression.
-            sub_boolean_algebra (list[pyprover.Prop]): sub_boolean_algebra. 
+            sub_boolean_algebra (list[pyprover.Prop]): sub_boolean_algebra. (bit representation of the sub_boolean_algebra)
+
 
         Returns:
             bool: True if the given expr is in the given sub_boolean_algebra.
@@ -1955,6 +1973,7 @@ class TAAMModel():
                     filtered_exprs.append(expr)
             
             return filtered_exprs
+
 
         
         else: # represented in a bit pattern
