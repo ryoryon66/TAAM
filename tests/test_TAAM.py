@@ -2,6 +2,7 @@
 import pytest
 from sympy import S
 import sys
+import pprint
 sys.path.append("./model_src")
 sys.path.append("../model_src/")
 sys.path.append("..")
@@ -59,6 +60,73 @@ class TestTypedGraph(object):
 
 
 class TestTAAMModel(object):
+
+    def test_random(self):
+
+        def run(model : TAAMModel):
+
+            # test I(T,a) : I(T,a) must not contain equivalent expressions
+            for T in powerset(model.typed_graph.Themes):
+                for a in (model.I.A):
+                    
+                    image = model.I.mapping[(T,a)]
+
+                    for expr in image:
+
+                        num_equivalent_expr = 0
+
+                        for expr2 in image:
+                            if BooleanAlgebra.is_equivalent(expr, expr2):
+                                num_equivalent_expr += 1
+
+                        assert(num_equivalent_expr == 1)
+
+            model.meet_tr()
+            model.meet_nnp()
+            model.meet_nsa()
+            model.meet_kos()
+            model.meet_nss()
+
+            model.meet_aass()
+            model.meet_i()
+            model.meet_vi()
+            model.meet_bat()
+            model.meet_pr()
+            model.meet_mat()
+            model.meet_manss()
+            model.meet_ss()
+
+            model.meet_esr()
+            model.meet_ensr()
+            model.meet_eos()
+            
+            model.meet_das()
+            model.meet_nwci()
+            model.meet_faD()
+            model.meet_faW()
+
+            return
+
+        for i in range(5):
+
+
+            typed_graph = TypedGraph(num_pnode=2,Themes_size=2,num_onode=2,num_edge = 4,limit_num_given_themes=1)
+            D = BooleanAlgebra(2)
+            I = Interpretation(typed_graph,D,2,bit_representation_ratio=0.7)
+
+            model = TAAMModel(typed_graph, D, I)
+
+            model.typed_graph.is_well_formed()
+
+            run(model)
+            print("random model",i,": no runtime error")
+
+
+
+        # raise NotImplementedError
+
+
+        return
 
     def test_load_and_save(self):
         typed_graph = TypedGraph(Themes_size=4)
@@ -447,6 +515,19 @@ class TestTAAMModel(object):
         assert(not model2.meet_aass())
         assert(not model2.meet_i())
         assert(not model2.meet_vi())
+
+        # bit representation
+
+        for _ in range(5):
+            typed_graph = TypedGraph(Themes_size=3)
+            D = BooleanAlgebra(2)
+            I = Interpretation(typed_graph,D,3,bit_representation_ratio=1.1000)
+            model = TAAMModel(typed_graph,D,I)
+            assert(model.meet_bat())
+        
+        return
+
+
 
 
 
@@ -886,7 +967,37 @@ class TestBooleanAlgebra(object):
 
 
 
-    
+    def test_in_sub_boolean_algebra(self):
+
+        d = BooleanAlgebra(3)
+        a,b,c = d.PROPVARS[0],d.PROPVARS[1],d.PROPVARS[2]
+
+        assert(d.in_sub_boolean_algebra(a,[a,b,c]))
+        assert(d.in_sub_boolean_algebra(a & b,[a,b]))
+        assert(d.in_sub_boolean_algebra(a & b,[a,c,b]))
+        assert(d.in_sub_boolean_algebra(S.true,[a,b,c]))
+        assert(d.in_sub_boolean_algebra(S.false,[a]))
+        assert(d.in_sub_boolean_algebra(S.true,[]))
+        assert(d.in_sub_boolean_algebra(S.false,[]))
+
+        assert(d.in_sub_boolean_algebra(a | b,[a,b,c]))
+        assert(d.in_sub_boolean_algebra(a | b,[a,b]))
+
+        assert(not d.in_sub_boolean_algebra(a,[b]))
+
+        assert(d.in_sub_boolean_algebra(a | ~a,[b,c]))
+
+
+        assert(not d.in_sub_boolean_algebra(a,[b,c]))
+        assert(not d.in_sub_boolean_algebra(a & b & c,[a,c]))
+        assert(not d.in_sub_boolean_algebra(b & b,[a]))
+        assert(not d.in_sub_boolean_algebra(a | a,[b]))
+
+        return
+
+
+
+
 
     def test_calc_join(self):
 

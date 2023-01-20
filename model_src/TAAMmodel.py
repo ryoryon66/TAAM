@@ -416,6 +416,7 @@ class BooleanAlgebra():
                 return False
 
         return True
+    
 
     @staticmethod
     def is_boolean_algebra(logics: list[Expr]):
@@ -626,6 +627,60 @@ class BooleanAlgebra():
     def __repr__(self) -> str:
 
         return str(self.PROPVARS)
+    
+    def in_sub_boolean_algebra(self,expr: Expr, sub_boolean_algebra: list[Prop]) -> bool:
+        """
+        check if the given expr is in the given sub_boolean_algebra (bit representation).
+
+        Args:
+            expr (pyprover.Expr): logical expression.
+            sub_boolean_algebra (list[pyprover.Prop]): sub_boolean_algebra. (bit representation of the sub_boolean_algebra)
+
+
+        Returns:
+            bool: True if the given expr is in the given sub_boolean_algebra.
+        """
+
+        for prop in self.PROPVARS:
+
+            if prop in sub_boolean_algebra:
+                continue
+
+            logic1 = expr.subs({prop: S.true})
+            logic0 = expr.subs({prop: S.false})
+
+            # if prop not in the sub_boolean_algebra affects the result of expr
+            if not BooleanAlgebra.is_equivalent(logic1, logic0):
+                return False
+
+        return True
+    
+    @staticmethod
+    def enumerate_exprs_in_sub_boolean_algebra(sub_boolean_algebra : list[Prop]) -> list[Expr] :
+            """
+            enumerate all the exprs in the given sub_boolean_algebra.
+
+            Args:
+                sub_boolean_algebra (list[pyprover.Prop]): sub_boolean_algebra. 
+
+            Returns:
+                list[pyprover.Expr]: all the exprs in the given sub_boolean_algebra.
+            """
+
+            num_propvar = len(sub_boolean_algebra)
+            exprs = []
+
+
+            if num_propvar == 0:
+                return [S.true,S.false]
+
+            for min_terms in powerset(range(2 ** num_propvar)):
+
+                expr = sympy.logic.SOPform(sub_boolean_algebra,min_terms,[])
+                exprs.append(expr)
+                
+            return exprs
+
 
     @staticmethod
     def calc_meet(logics: list[Expr]) -> list[Expr]:
@@ -764,7 +819,7 @@ class BooleanAlgebra():
 
 
 class Interpretation():
-    def __init__(self, typed_graph: TypedGraph, D: BooleanAlgebra, limit_image_size: int = 5):
+    def __init__(self, typed_graph: TypedGraph, D: BooleanAlgebra, limit_image_size: int = 5,bit_representation_ratio = 0.5):
         """
         Interpretation
 
@@ -772,6 +827,7 @@ class Interpretation():
             typed_graph (TypedGraph): typed graph
             D (BooleanAlgebra): boolean algebra
             limit_image_size (int, optional): the maximum number of elements in the output of Interpretation. Defaults to 5.
+            bit_representation_ratio (float, optional): the ratio of the number of I(T,omega) that uses a bit pattern representation. Defaults to 0.5.
 
         """
 
@@ -785,7 +841,13 @@ class Interpretation():
         # print(self.Themes)
 
         # It is assumed that tuple[str] in key of self.mapping is sorted.
+        # self.mapping[(T,a)] is the list of logical expressions that represents I(T,a). Must not contain equivalent expressions.
+        # there are two types of representation of I(T,a).
         self.mapping: dict[tuple[tuple[str], str], list[Expr]] = dict()
+
+        # self.is_bit_pattern[(T,a)] == True iff self.mapping[(T,a)] is represented in bit pattern.
+        # It is assumed that tuple[str] in key of self.is_bit_pattern is sorted.
+        self.is_bit_pattern : dict[tuple[tuple[str],str], bool] = dict()
 
         def power_set_themes() -> tuple[str]:
 
@@ -820,16 +882,51 @@ class Interpretation():
                     if not is_already_generated:
                         image.append(expr)
 
+                # for expr in image:
+
+                #     num_equivalent_expr = 0
+
+                #     for expr2 in image:
+                #         if BooleanAlgebra.is_equivalent(expr, expr2):
+                #             num_equivalent_expr += 1
+
+                #     assert(num_equivalent_expr == 1)
+
                 self.mapping[(subthemes, a)] = image
+                self.is_bit_pattern[(subthemes, a)] = False
+        
+        # for some (subthemes,self.OMEGA), use a bit pattern representation. 
+
+        bit_pattern_ratio = bit_representation_ratio
+
+        for subthemes in power_set_themes():
+            assert (isinstance(subthemes, tuple))
+
+            if random.random() > bit_pattern_ratio:
+                continue # use the default representation.
+
+            num_kinds = D.NUM_PROPVAR
+            indices = random.sample(range(num_kinds), random.randint(0, num_kinds)) # if indices is empty, it means boolean algebra {top,bot}.
+
+            self.mapping[(subthemes, self.OMEGA)] = []
+
+            for i in indices:
+                self.mapping[(subthemes, self.OMEGA)].append(D.PROPVARS[i])
+
+            self.is_bit_pattern[(subthemes, self.OMEGA)] = True
+        
+        
+        # pprint.pprint(self.mapping)
+        # pprint.pprint(self.is_bit_pattern)
 
         # print(count)
         return
 
     def __repr__(self) -> str:
-        return pprint.pformat(self.mapping)
+        return pprint.pformat(self.mapping) + "\n" + pprint.pformat(self.is_bit_pattern) 
 
     def __str__(self) -> str:
-        return pprint.pformat(self.mapping)
+        return pprint.pformat(self.mapping) + "\n" + pprint.pformat(self.is_bit_pattern)
 
 
 class TAAMModel():
@@ -1054,6 +1151,14 @@ class TAAMModel():
         ret.I.Themes = model.I.Themes
         ret.I.A = model.I.A
         ret.I.mapping = model.I.mapping
+
+        try:
+            ret.I.is_bit_pattern = model.I.is_bit_pattern
+        except:
+            ret.I.is_bit_pattern = dict()
+            for T in powerset(ret.I.Themes):
+                for a in ret.I.A + [ret.I.OMEGA]:
+                    ret.I.is_bit_pattern[T, a] = False
 
         # determine if the model is proper
 
@@ -1573,24 +1678,37 @@ class TAAMModel():
             for subthemes in powerset(Themes):
 
                 subthemes = cast(tuple[str], subthemes)
+                is_bit_pattern = self.I.is_bit_pattern[(subthemes,self.I.OMEGA)]
 
-                logics_left = self.I.mapping[(subthemes, s)]
-                logics_right = self.I.mapping[(subthemes, self.I.OMEGA)]
+                if not is_bit_pattern:
 
-                for logic_left in logics_left:
+                    logics_left = self.I.mapping[(subthemes, s)]
+                    logics_right = self.I.mapping[(subthemes, self.I.OMEGA)]
 
-                    is_contained = False
+                    for logic_left in logics_left:
 
-                    for logic_right in logics_right:
+                        is_contained = False
 
-                        is_contained |= BooleanAlgebra.is_equivalent(
-                            logic_left, logic_right)
+                        for logic_right in logics_right:
 
-                        if is_contained:
-                            break
+                            is_contained |= BooleanAlgebra.is_equivalent(
+                                logic_left, logic_right)
 
-                    if not is_contained:
-                        return False
+                            if is_contained:
+                                break
+
+                        if not is_contained:
+                            return False
+                
+                else: # bit pattern representation is used
+                    
+                    logics_left = self.I.mapping[(subthemes, s)]
+                    sub_boolean_algebra = self.I.mapping[(subthemes,self.I.OMEGA)]
+
+                    for logic_left in logics_left:
+                        is_in = self.D.in_sub_boolean_algebra(logic_left,sub_boolean_algebra) # type: ignore
+                        if not is_in:
+                            return False
 
         return True
 
@@ -1615,16 +1733,22 @@ class TAAMModel():
 
         for subthemes in powerset(self.typed_graph.Themes):
 
-            logics = self.I.mapping[(subthemes, self.I.OMEGA)]
+            if not self.I.is_bit_pattern[(subthemes,self.I.OMEGA)]: 
 
-            if logics == []:
+                logics = self.I.mapping[(subthemes, self.I.OMEGA)]
+
+                if logics == []:
+                    continue
+
+                is_complete_boolean_algebra = BooleanAlgebra.is_boolean_algebra(
+                    logics)
+
+                if not is_complete_boolean_algebra:
+                    return False
+        
+            else: # if bit pattern representation is used, it is guaranteed to be a boolean algebra
                 continue
-
-            is_complete_boolean_algebra = BooleanAlgebra.is_boolean_algebra(
-                logics)
-
-            if not is_complete_boolean_algebra:
-                return False
+            
 
         return True
 
@@ -1707,11 +1831,55 @@ class TAAMModel():
         for T2 in powerset(Themes):
             for T1 in powerset(T2):
 
-                image_T1 = self.I.mapping[(T1, self.I.OMEGA)]
-                image_T2 = self.I.mapping[(T2, self.I.OMEGA)]
+                is_bit_pattern1 = self.I.is_bit_pattern[(T1, self.I.OMEGA)]
+                is_bit_pattern2 = self.I.is_bit_pattern[(T2, self.I.OMEGA)]
 
-                if not BooleanAlgebra.is_included(image_T1, image_T2):
-                    return False
+                if not is_bit_pattern1 and not is_bit_pattern2:
+
+                    image_T1 = self.I.mapping[(T1, self.I.OMEGA)]
+                    image_T2 = self.I.mapping[(T2, self.I.OMEGA)]
+
+                    if not BooleanAlgebra.is_included(image_T1, image_T2):
+                        return False
+                
+                elif is_bit_pattern1 and not is_bit_pattern2:
+
+                    sub_boolean_algebra1 = self.I.mapping[(T1, self.I.OMEGA)]
+                    logics2 = self.I.mapping[(T2, self.I.OMEGA)]
+
+                    if len(logics2) < 2 ** (2 ** len(sub_boolean_algebra1)) :
+                        return False
+
+                    # enumerate all the expressions in the sub boolean algebra
+
+                    logics1 = BooleanAlgebra.enumerate_exprs_in_sub_boolean_algebra(sub_boolean_algebra1) # type: ignore
+
+                    if not self.D.is_included(logics1, logics2):
+                        return False
+                    
+                    continue
+
+
+                elif not is_bit_pattern1 and is_bit_pattern2:
+                    
+                    logics1 = self.I.mapping[(T1, self.I.OMEGA)]
+                    sub_boolean_algebra2 = self.I.mapping[(T2, self.I.OMEGA)]
+
+                    for expr1 in logics1:
+                        if not self.D.in_sub_boolean_algebra(expr1, sub_boolean_algebra2):# type: ignore
+                            return False
+                        continue
+
+                else: # both are bit patterns
+
+                    sub_boolean_algebra1 = self.I.mapping[(T1, self.I.OMEGA)]
+                    sub_boolean_algebra2 = self.I.mapping[(T2, self.I.OMEGA)]
+
+                    for prop1 in sub_boolean_algebra1:
+                        if prop1 not in sub_boolean_algebra2:
+                            return False
+                    
+                    continue
 
         return True
 
@@ -1763,6 +1931,45 @@ class TAAMModel():
 
         return True
 
+    def _filter_with_aspect_of_T(self,exprs: list[Expr],T : tuple[str]) -> list[Expr]:
+        """
+        filter out the expressions that are not in the aspect of T, I(T,omega).
+        This method is used in meet_esr,meet_ensr,meet_eos implementations.
+
+        Args:
+            exprs (list[Expr]): [logical expressions. do not use for I(T,omega) represented in a bit pattern]
+            T (tuple[str]): [set of themes]
+        
+        Returns:
+            list[Expr]: [logical expressions]
+        """
+
+        filtered_exprs : list[Expr] = []
+        OMEGA = self.I.OMEGA
+
+        if not self.I.is_bit_pattern[(T,OMEGA)]:
+
+            exprs2 = self.I.mapping[(T,OMEGA)]
+
+            for expr in exprs:
+                if BooleanAlgebra.is_included([expr],exprs2):
+                    filtered_exprs.append(expr)
+            
+            return filtered_exprs
+
+
+        
+        else: # represented in a bit pattern
+
+            sub_boolean_algebra = self.I.mapping[(T,OMEGA)]
+
+            for expr in exprs:
+                if self.D.in_sub_boolean_algebra(expr,sub_boolean_algebra): # type: ignore
+                    filtered_exprs.append(expr)
+            
+            return filtered_exprs
+
+
     def meet_esr(self) -> bool:
 
         assert (self.typed_graph is not None)
@@ -1773,17 +1980,21 @@ class TAAMModel():
         for T1 in powerset(Themes):
             for T2 in powerset(Themes):
 
-                common: set[Expr] = set(self.I.mapping[(T1, self.I.OMEGA)]) & set(
-                    self.I.mapping[(T2, self.I.OMEGA)])
-
-                # print(T1,T2,common)
-
+                # for nodes that follow the form of "t.c".
                 for node in self.typed_graph.enumerate_pnode("t.c"):
 
-                    image_T1: set[Expr] = set(self.I.mapping[(T1, node)])
-                    image_T2: set[Expr] = set(self.I.mapping[(T2, node)])
+                    image_T1 = self.I.mapping[(T1, node)]
+                    image_T2 = self.I.mapping[(T2, node)]
 
-                    if not ((image_T1 & common) == (image_T2 & common)):
+                    logics_left = self._filter_with_aspect_of_T(image_T1,T1)
+                    logics_left = self._filter_with_aspect_of_T(logics_left,T2)
+
+                    logics_right = self._filter_with_aspect_of_T(image_T2,T1)
+                    logics_right = self._filter_with_aspect_of_T(logics_right,T2)
+
+                    is_same = BooleanAlgebra.is_included(logics_left,logics_right) and BooleanAlgebra.is_included(logics_right,logics_left)
+
+                    if not is_same:
                         return False
 
         return True
@@ -1798,18 +2009,21 @@ class TAAMModel():
         for T1 in powerset(Themes):
             for T2 in powerset(Themes):
 
-                common: set[Expr] = set(self.I.mapping[(T1, self.I.OMEGA)]) & set(
-                    self.I.mapping[(T2, self.I.OMEGA)])
-
-                # print(T1,T2,common)
-
                 # for nodes that follows the form of "t.a"
                 for node in self.typed_graph.enumerate_pnode("t.a"):
 
-                    image_T1: set[Expr] = set(self.I.mapping[(T1, node)])
-                    image_T2: set[Expr] = set(self.I.mapping[(T2, node)])
+                    image_T1 = self.I.mapping[(T1, node)]
+                    image_T2 = self.I.mapping[(T2, node)]
 
-                    if not ((image_T1 & common) == (image_T2 & common)):
+                    logics_left = self._filter_with_aspect_of_T(image_T1,T1)
+                    logics_left = self._filter_with_aspect_of_T(logics_left,T2)
+
+                    logics_right = self._filter_with_aspect_of_T(image_T2,T1)
+                    logics_right = self._filter_with_aspect_of_T(logics_right,T2)
+
+                    is_same = BooleanAlgebra.is_included(logics_left,logics_right) and BooleanAlgebra.is_included(logics_right,logics_left)
+
+                    if not is_same:
                         return False
 
         return True
@@ -1824,18 +2038,22 @@ class TAAMModel():
         for T1 in powerset(Themes):
             for T2 in powerset(Themes):
 
-                common: set[Expr] = set(self.I.mapping[(T1, self.I.OMEGA)]) & set(
-                    self.I.mapping[(T2, self.I.OMEGA)])
-
-                # print(T1,T2,common)
-
                 # for nodes that follows the form of "a"
                 for node in self.typed_graph.enumerate_onode():
 
-                    image_T1: set[Expr] = set(self.I.mapping[(T1, node)])
-                    image_T2: set[Expr] = set(self.I.mapping[(T2, node)])
+                    image_T1 = self.I.mapping[(T1, node)]
+                    image_T2 = self.I.mapping[(T2, node)]
 
-                    if not ((image_T1 & common) == (image_T2 & common)):
+
+                    logics_left = self._filter_with_aspect_of_T(image_T1,T1)
+                    logics_left = self._filter_with_aspect_of_T(logics_left,T2)
+
+                    logics_right = self._filter_with_aspect_of_T(image_T2,T1)
+                    logics_right = self._filter_with_aspect_of_T(logics_right,T2)
+
+                    is_same = BooleanAlgebra.is_included(logics_left,logics_right) and BooleanAlgebra.is_included(logics_right,logics_left)
+
+                    if not is_same:
                         return False
 
         return True

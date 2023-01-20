@@ -2,10 +2,8 @@ import sys
 sys.path.append("./model_src")
 sys.path.append("./task/")
 
-from TAAMmodel import TAAMModel, BooleanAlgebra, Interpretation, TypedGraph, powerset
+from TAAMmodel import TAAMModel, BooleanAlgebra, Interpretation, TypedGraph,powerset
 from random_test1 import ConstraintChecker
-from curses.ascii import isascii
-from lib2to3.pgen2.pgen import generate_grammar
 from pprint import pprint
 from re import T
 import time
@@ -51,20 +49,24 @@ class DoExperiment:
 
     def generate_model(self):
 
-        num_node = random.randint(1, 10)
-        num_edge: int = int((num_node ** 2) * random.random()
-                            * (random.random() ** 0.3))
+        num_node = random.randint(1,10)
+        num_edge : int = int((num_node ** 2) * random.random() * (random.random() ** 0.3))
 
-        num_onode = random.randint(0, num_node)
+        num_onode = random.randint(0,num_node)
         num_pnode = num_node - num_onode
 
+        
+
         Aord_size = num_onode
-        Themes_size = random.randint(1, 4)
-        limit_num_given_themes = random.randint(1, 4)
+        Themes_size = random.randint(1,4)
+        limit_num_given_themes = random.randint(1,4)
 
-        num_propvar = random.randint(1, 2)
+        num_propvar = random.randint(1,3)
 
-        limit_image_size = random.randint(1, 4)
+        limit_image_size = random.randint(1,4)
+
+
+        bit_representation_ratio = 0.5
 
         graph_params = {
             "Aord_size": Aord_size,
@@ -80,7 +82,8 @@ class DoExperiment:
         }
 
         interpretation_params = {
-            "limit_image_size": limit_image_size
+            "limit_image_size": limit_image_size,
+            "bit_representation_ratio": bit_representation_ratio
         }
 
         pprint(graph_params)
@@ -129,6 +132,7 @@ class DoExperiment:
             "num_propvar": model.D.NUM_PROPVAR,
 
             "max_given_logics_num": -1,
+            "bit_representation_ratio": -1,
 
         }
 
@@ -146,6 +150,26 @@ class DoExperiment:
             num_logics = len(image)
             new_row["max_given_logics_num"] = max(
                 num_logics, new_row["max_given_logics_num"])
+        
+        # set bit_representation_ratio
+        bit_pattern_num = 0
+        overall_num = 0
+        for T in powerset(model.typed_graph.Themes):
+
+            OMEGA = model.I.OMEGA
+
+            try:
+                if model.I.is_bit_pattern[(T,OMEGA)] == True:
+                    bit_pattern_num += 1
+            except AttributeError:
+                pass
+
+            overall_num += 1
+
+        new_row["bit_representation_ratio"] = bit_pattern_num / overall_num
+
+
+
 
         # data about the constraints
 
@@ -181,5 +205,6 @@ class DoExperiment:
 
 if __name__ == "__main__":
 
-    experiment = DoExperiment("./data/experiment1/time_data.csv")
-    experiment.generate_time_data(1000000000000)
+    experiment = DoExperiment("./data/experiment2/time_data.csv")
+    # experiment.generate_time_data(1)
+    experiment.generate_time_data(100000000000000000)
