@@ -6,7 +6,7 @@ TAAM, a mathematical argumentation model implemented in Python
 
 This is a Python implementation of TAAM, a mathematical argumentation model.
 
-If you want detailed information, please see the original article.(TODO)
+If you want detailed information, please see the original article.[arxiv](https://arxiv.org/abs/2205.15141)
 
 
 ## Description
