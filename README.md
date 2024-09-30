@@ -42,6 +42,15 @@ pytest
 <!-- 
 [pygraphvizに関してこれに従うとインストールはできた](https://github.com/pygraphviz/pygraphviz/issues/398) -->
 
+### Docker
+
+You can test the software as follows.
+
+```
+docker build -t taam_image .
+docker run -it --name taam_env taam_image
+```
+
 ## Usage
 
 
